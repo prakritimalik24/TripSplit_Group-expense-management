@@ -1,11 +1,35 @@
 import uuid
 
 from sqlalchemy import String, Boolean , DateTime , func
-from sqlalchemy.orm import Mapped , mapped_column
+from sqlalchemy.orm import Mapped , mapped_column , relationship
 from sqlalchemy import Uuid
 from backend.db.base import Base
 
 class User(Base):
+    groups_created = relationship("Group" , back_populates="creator")
+    memberships = relationship("GroupMember" , back_populates="user")
+
+    expenses_paid = relationship(
+    "Expense",
+    back_populates="payer",
+    foreign_keys="Expense.paid_by"
+    )
+
+    expense_splits = relationship("ExpenseSplit", back_populates="user")
+
+    settlements_sent = relationship(
+        "Settlement",
+        back_populates="payer",
+        foreign_keys="Settlement.paid_by"
+    )
+
+    settlements_received = relationship(
+        "Settlement",
+        back_populates="receiver",
+        foreign_keys="Settlement.paid_to"
+    )
+
+    invitations_sent = relationship("Invitation", back_populates="inviter")
 
     __tablename__ = "users"
 

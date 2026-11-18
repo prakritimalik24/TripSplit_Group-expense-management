@@ -3,12 +3,16 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import String, DateTime, Uuid, ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column , relationship
 
 from backend.db.base import Base
 
 
 class Invitation(Base):
+    group = relationship("Group", back_populates="invitations")
+
+    inviter = relationship("User", back_populates="invitations_sent")
+
     __tablename__ = "invitations"
 
     id: Mapped[uuid.UUID] = mapped_column(

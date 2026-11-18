@@ -6,12 +6,25 @@ from decimal import Decimal
 from sqlalchemy import (
     String, DateTime, Numeric, Uuid, ForeignKey, func
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
+from sqlalchemy.orm import Mapped, mapped_column , relationship
+from sqlalchemy import CheckConstraint
 from backend.db.base import Base
 
 
 class Expense(Base):
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="check_expense_amount"),
+    )
+    group = relationship("Group", back_populates="expenses")
+
+    payer = relationship(
+        "User",
+        back_populates="expenses_paid",
+        foreign_keys="Expense.paid_by"
+    )
+
+    splits = relationship("ExpenseSplit", back_populates="expense")
+
     __tablename__ = "expenses"
 
     id: Mapped[uuid.UUID] = mapped_column(

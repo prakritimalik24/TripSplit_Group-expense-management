@@ -2,12 +2,24 @@
 import uuid
 
 from sqlalchemy import String, Text, Date, DateTime, Uuid, ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column
-
+from sqlalchemy.orm import Mapped, mapped_column , relationship
+from sqlalchemy import CheckConstraint
 from backend.db.base import Base
 
 
 class Group(Base):
+    __table_args__ = (
+        CheckConstraint(
+            "start_date IS NULL OR end_date IS NULL OR end_date >= start_date",
+            name="check_group_dates"
+        ),
+    )
+    creator = relationship("User", back_populates="groups_created")
+    members = relationship("GroupMember", back_populates="group")
+    expenses = relationship("Expense", back_populates="group")
+    settlements = relationship("Settlement", back_populates="group")
+    invitations = relationship("Invitation", back_populates="group")
+
     __tablename__ = "groups"
 
     id: Mapped[uuid.UUID] = mapped_column(

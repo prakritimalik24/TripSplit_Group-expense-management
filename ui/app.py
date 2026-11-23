@@ -3,6 +3,7 @@ from ui.auth import render_auth_page
 from ui.dashboard import render_dashboard
 from ui.groups import render_groups
 from ui.expenses import render_expenses
+from ui.settlements import render_settlements
 
 st.set_page_config(
     page_title = "TripSplit",
@@ -40,7 +41,7 @@ else:
 
     page = st.sidebar.radio(
     "Navigation",
-    ["Dashboard", "Groups","Expenses"]
+    ["Dashboard", "Groups","Expenses","Settlements"]
 )
 
     if page == "Dashboard":
@@ -51,3 +52,6 @@ else:
 
     elif page == "Expenses":
         render_expenses()
+
+    elif page == "Settlements":
+        render_settlements()

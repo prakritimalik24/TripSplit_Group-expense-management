@@ -1,10 +1,26 @@
 import streamlit as st
+from ui.auth import render_auth_page
 
 st.set_page_config(
     page_title = "TripSplit",
-    layout = "wide"
+    layout = "wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title("WWelcome to TripSplit")
+if "user" not in st.session_state:
+    st.session_state.user = None
 
-st.write("Split expenses.Track balances . Travel together")
+if "access_token" not in st.session_state:
+    st.session_state.access_token = None
+
+
+st.title("Welcome to TripSplit")
+
+st.caption("Split expenses. Track balances . Travel together")
+
+st.divider()
+
+if st.session_state.user is None:
+    render_auth_page()
+else:
+    st.success(f"Welcome {st.session_state.user['name']}!")

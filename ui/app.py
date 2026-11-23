@@ -1,6 +1,7 @@
 import streamlit as st
 from ui.auth import render_auth_page
 from ui.dashboard import render_dashboard
+from ui.groups import render_groups
 
 st.set_page_config(
     page_title = "TripSplit",
@@ -36,4 +37,13 @@ else:
 
             st.rerun()
 
-    render_dashboard()
+    page = st.sidebar.radio(
+    "Navigation",
+    ["Dashboard", "Groups"]
+)
+
+    if page == "Dashboard":
+        render_dashboard()
+
+    elif page == "Groups":
+        render_groups()

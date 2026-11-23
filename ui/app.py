@@ -1,5 +1,6 @@
 import streamlit as st
 from ui.auth import render_auth_page
+from ui.dashboard import render_dashboard
 
 st.set_page_config(
     page_title = "TripSplit",
@@ -23,4 +24,16 @@ st.divider()
 if st.session_state.user is None:
     render_auth_page()
 else:
-    st.success(f"Welcome {st.session_state.user['name']}!")
+
+    with st.sidebar:
+        st.subheader("TripSplit")
+        st.write(f"Welcome {st.session_state.user['name']}!")
+
+        if st.button("Logout", use_container_width=True):
+
+            st.session_state.user = None
+            st.session_state.access_token = None
+
+            st.rerun()
+
+    render_dashboard()

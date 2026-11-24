@@ -4,12 +4,15 @@ from ui.dashboard import render_dashboard
 from ui.groups import render_groups
 from ui.expenses import render_expenses
 from ui.settlements import render_settlements
+from ui.style import apply_styles
 
 st.set_page_config(
     page_title = "TripSplit",
     layout = "wide",
     initial_sidebar_state="expanded"
 )
+
+apply_styles()
 
 if "user" not in st.session_state:
     st.session_state.user = None

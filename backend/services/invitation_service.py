@@ -9,12 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from backend.models import Invitation, GroupMember
+from backend.models import Invitation, Group, GroupMember
+
+from backend.services.validation import (
+    validate_expiry_days,
+    validate_invitation_token
+)
 
 
-# Helper: Hash invitation token
 def _hash_invitation_token(token: str) -> str:
-
     return hashlib.sha256(
         token.encode("utf-8")
     ).hexdigest()
@@ -28,8 +31,10 @@ def create_invitation(
     expires_in_days: int = 7
 ):
 
-    if expires_in_days <= 0:
-        raise ValueError("Invitation expiry must be positive.")
+    # Validate expiry duration
+    expires_in_days = validate_expiry_days(
+        expires_in_days
+    )
 
     # Check whether inviter is a group admin
     membership = db.execute(
@@ -44,6 +49,19 @@ def create_invitation(
             "Only group admins can create invitations."
         )
 
+    # Prevent invitations for archived groups
+    group = db.execute(
+        select(Group).where(Group.id == group_id)
+    ).scalar_one_or_none()
+
+    if group is None:
+        raise ValueError("Group not found.")
+
+    if group.status != "active":
+        raise ValueError(
+            "Invitations cannot be created for archived groups."
+        )
+
     # Generate a secure random token
     raw_token = secrets.token_urlsafe(32)
 
@@ -51,9 +69,12 @@ def create_invitation(
     token_hash = _hash_invitation_token(raw_token)
 
     # Calculate expiration time
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        days=expires_in_days
-    )
+    try:
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            days=expires_in_days
+        )
+    except OverflowError:
+        raise ValueError("Invitation expiry is too large.")
 
     invitation = Invitation(
         group_id=group_id,
@@ -80,14 +101,15 @@ def create_invitation(
         raise
 
 
-
+# 2. Accept a group invitation
 def accept_invitation(
     db: Session,
     token: str,
     user_id: UUID
 ):
-    if not token:
-        raise ValueError("Invitation token is required.")
+
+    # Validate token before hashing
+    token = validate_invitation_token(token)
 
     token_hash = _hash_invitation_token(token)
 
@@ -98,6 +120,7 @@ def accept_invitation(
     )
 
     try:
+
         invitation = db.execute(
             statement
         ).scalar_one_or_none()
@@ -106,11 +129,39 @@ def accept_invitation(
             raise ValueError("Invalid invitation token.")
 
         if invitation.used_at is not None:
-            raise ValueError("This invitation has already been used.")
+            raise ValueError(
+                "This invitation has already been used."
+            )
 
-        if datetime.now(timezone.utc) >= invitation.expires_at:
-            raise ValueError("This invitation has expired.")
+        # Handle timezone-aware and naive DB timestamps
+        expires_at = invitation.expires_at
 
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(
+                tzinfo=timezone.utc
+            )
+
+        if datetime.now(timezone.utc) >= expires_at:
+            raise ValueError(
+                "This invitation has expired."
+            )
+
+        # Check that the group still exists and is active
+        group = db.execute(
+            select(Group).where(
+                Group.id == invitation.group_id
+            )
+        ).scalar_one_or_none()
+
+        if group is None:
+            raise ValueError("The invited group no longer exists.")
+
+        if group.status != "active":
+            raise ValueError(
+                "You cannot join an archived group."
+            )
+
+        # Check existing membership
         existing_membership = db.execute(
             select(GroupMember).where(
                 GroupMember.group_id == invitation.group_id,
@@ -119,8 +170,11 @@ def accept_invitation(
         ).scalar_one_or_none()
 
         if existing_membership is not None:
-            raise ValueError("You are already a member of this group.")
+            raise ValueError(
+                "You are already a member of this group."
+            )
 
+        # Create membership
         new_membership = GroupMember(
             group_id=invitation.group_id,
             user_id=user_id,
@@ -128,6 +182,8 @@ def accept_invitation(
         )
 
         db.add(new_membership)
+
+        # Mark invitation as used
         invitation.used_at = datetime.now(timezone.utc)
 
         db.commit()
@@ -138,7 +194,8 @@ def accept_invitation(
     except IntegrityError:
         db.rollback()
         raise ValueError(
-            "Invitation could not be accepted. It may already be used."
+            "Invitation could not be accepted. "
+            "It may already be used or you may already be a member."
         )
 
     except Exception:

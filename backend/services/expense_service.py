@@ -7,6 +7,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.models import Expense, ExpenseSplit, GroupMember
+from backend.services.validation import (
+    validate_amount,
+    validate_text,
+    validate_datetime
+)
+
 
 def _get_membership(db: Session, group_id: UUID, user_id: UUID):
     statement = select(GroupMember).where(
@@ -15,6 +21,7 @@ def _get_membership(db: Session, group_id: UUID, user_id: UUID):
     )
 
     return db.execute(statement).scalar_one_or_none()
+
 
 def create_expense(
     db: Session,
@@ -25,17 +32,29 @@ def create_expense(
     expense_date: datetime,
     category: str | None = None
 ):
-    amount = Decimal(str(amount))
 
-    if amount <= 0:
-        raise ValueError("Expense amount must be positive.")
+    # Validate input
+    amount = validate_amount(amount, "Expense amount")
 
-    if amount != amount.quantize(Decimal("0.01")):
-        raise ValueError("Expense amount can have at most 2 decimal places.")
+    title = validate_text(
+        title,
+        field_name="Expense title",
+        max_length=150
+    )
 
-    if not title.strip():
-        raise ValueError("Expense title cannot be empty.")
+    category = validate_text(
+        category if category is not None else "",
+        field_name="Category",
+        max_length=50,
+        required=False
+    )
 
+    expense_date = validate_datetime(
+        expense_date,
+        field_name="Expense date"
+    )
+
+    # Validate payer membership
     membership = _get_membership(db, group_id, paid_by)
 
     if membership is None:
@@ -44,7 +63,7 @@ def create_expense(
     new_expense = Expense(
         group_id=group_id,
         paid_by=paid_by,
-        title=title.strip(),
+        title=title,
         amount=amount,
         category=category,
         expense_date=expense_date
@@ -61,11 +80,13 @@ def create_expense(
         db.rollback()
         raise
 
+
 def get_expense_by_id(
     db: Session,
     expense_id: UUID,
     user_id: UUID
 ):
+
     statement = (
         select(Expense)
         .join(
@@ -82,11 +103,13 @@ def get_expense_by_id(
 
     return result.scalar_one_or_none()
 
+
 def get_group_expenses(
     db: Session,
     group_id: UUID,
     user_id: UUID
 ):
+
     membership = _get_membership(db, group_id, user_id)
 
     if membership is None:
@@ -102,6 +125,7 @@ def get_group_expenses(
 
     return result.scalars().all()
 
+
 def update_expense(
     db: Session,
     expense_id: UUID,
@@ -111,6 +135,7 @@ def update_expense(
     category: str | None = None,
     expense_date: datetime | None = None
 ):
+
     expense = get_expense_by_id(db, expense_id, user_id)
 
     if expense is None:
@@ -119,22 +144,25 @@ def update_expense(
     membership = _get_membership(db, expense.group_id, user_id)
 
     if expense.paid_by != user_id and membership.role != "admin":
-        raise PermissionError("Only the payer or group admin can update this expense.")
+        raise PermissionError(
+            "Only the payer or group admin can update this expense."
+        )
 
     try:
+
         if title is not None:
-            if not title.strip():
-                raise ValueError("Expense title cannot be empty.")
-            expense.title = title.strip()
+            expense.title = validate_text(
+                title,
+                field_name="Expense title",
+                max_length=150
+            )
 
         if amount is not None:
-            amount = Decimal(str(amount))
 
-            if amount <= 0:
-                raise ValueError("Expense amount must be positive.")
-
-            if amount != amount.quantize(Decimal("0.01")):
-                raise ValueError("Expense amount can have at most 2 decimal places.")
+            validated_amount = validate_amount(
+                amount,
+                "Expense amount"
+            )
 
             existing_splits = db.execute(
                 select(ExpenseSplit).where(
@@ -147,13 +175,23 @@ def update_expense(
                     "Cannot change expense amount after splits are created."
                 )
 
-            expense.amount = amount
+            expense.amount = validated_amount
 
         if category is not None:
-            expense.category = category
+
+            expense.category = validate_text(
+                category,
+                field_name="Category",
+                max_length=50,
+                required=False
+            )
 
         if expense_date is not None:
-            expense.expense_date = expense_date
+
+            expense.expense_date = validate_datetime(
+                expense_date,
+                field_name="Expense date"
+            )
 
         db.commit()
         db.refresh(expense)
@@ -164,11 +202,13 @@ def update_expense(
         db.rollback()
         raise
 
+
 def delete_expense(
     db: Session,
     expense_id: UUID,
     user_id: UUID
 ):
+
     expense = get_expense_by_id(db, expense_id, user_id)
 
     if expense is None:
@@ -177,9 +217,12 @@ def delete_expense(
     membership = _get_membership(db, expense.group_id, user_id)
 
     if expense.paid_by != user_id and membership.role != "admin":
-        raise PermissionError("Only the payer or group admin can delete this expense.")
+        raise PermissionError(
+            "Only the payer or group admin can delete this expense."
+        )
 
     try:
+
         db.execute(
             delete(ExpenseSplit).where(
                 ExpenseSplit.expense_id == expense_id

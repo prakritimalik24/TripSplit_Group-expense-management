@@ -109,7 +109,8 @@ def create_equal_splits(
     db: Session,
     expense_id: UUID,
     user_id: UUID,
-    participant_ids: list[UUID]
+    participant_ids: list[UUID],
+    commit: bool = True
 ):
 
     expense = _get_expense_for_member(
@@ -163,7 +164,11 @@ def create_equal_splits(
     try:
 
         db.add_all(split_records)
-        db.commit()
+
+        if commit:
+            db.commit()
+        else:
+            db.flush()
 
         return split_records
 
@@ -176,7 +181,8 @@ def create_custom_splits(
     db: Session,
     expense_id: UUID,
     user_id: UUID,
-    splits: list[tuple[UUID, Decimal]]
+    splits: list[tuple[UUID, Decimal]],
+    commit: bool = True
 ):
 
     expense = _get_expense_for_member(
@@ -246,7 +252,11 @@ def create_custom_splits(
     try:
 
         db.add_all(split_records)
-        db.commit()
+
+        if commit:
+            db.commit()
+        else:
+            db.flush()
 
         return split_records
 

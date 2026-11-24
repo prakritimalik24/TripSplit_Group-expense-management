@@ -12,6 +12,8 @@ from backend.models import (
     Settlement
 )
 
+from backend.services.validation import validate_amount
+
 
 CENT = Decimal("0.01")
 
@@ -22,7 +24,7 @@ def calculate_group_balances(
     group_id: UUID,
     user_id: UUID
 ):
-    # Check whether requesting user belongs to the group
+
     membership = db.execute(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
@@ -31,9 +33,10 @@ def calculate_group_balances(
     ).scalar_one_or_none()
 
     if membership is None:
-        raise PermissionError("You are not a member of this group.")
+        raise PermissionError(
+            "You are not a member of this group."
+        )
 
-    # Get all group members
     member_ids = db.execute(
         select(GroupMember.user_id).where(
             GroupMember.group_id == group_id
@@ -45,7 +48,7 @@ def calculate_group_balances(
         for member_id in member_ids
     }
 
-    # Calculate total amount paid by each member
+    # Amount paid by each member
     paid_totals = db.execute(
         select(
             Expense.paid_by,
@@ -58,7 +61,7 @@ def calculate_group_balances(
     for member_id, amount in paid_totals:
         balances[member_id] += amount
 
-    # Calculate total amount owed by each member
+    # Amount owed by each member
     owed_totals = db.execute(
         select(
             ExpenseSplit.user_id,
@@ -75,7 +78,7 @@ def calculate_group_balances(
     for member_id, amount in owed_totals:
         balances[member_id] -= amount
 
-    # Account for money sent in previous settlements
+    # Account for previous payments sent
     sent_totals = db.execute(
         select(
             Settlement.paid_by,
@@ -88,7 +91,7 @@ def calculate_group_balances(
     for member_id, amount in sent_totals:
         balances[member_id] += amount
 
-    # Account for money received in previous settlements
+    # Account for previous payments received
     received_totals = db.execute(
         select(
             Settlement.paid_to,
@@ -110,10 +113,12 @@ def simplify_debts(balances: dict):
     creditors = []
     debtors = []
 
-    # Separate people who should receive and pay money
     for user_id, balance in balances.items():
 
         balance = Decimal(str(balance))
+
+        if not balance.is_finite():
+            raise ValueError("Invalid group balance detected.")
 
         if balance > 0:
             creditors.append({
@@ -127,7 +132,6 @@ def simplify_debts(balances: dict):
                 "amount": abs(balance)
             })
 
-    # Total credits and debts must balance
     total_credit = sum(
         (person["amount"] for person in creditors),
         Decimal("0.00")
@@ -139,14 +143,15 @@ def simplify_debts(balances: dict):
     )
 
     if total_credit != total_debt:
-        raise ValueError("Group balances do not add up to zero.")
+        raise ValueError(
+            "Group balances do not add up to zero."
+        )
 
     transactions = []
 
     creditor_index = 0
     debtor_index = 0
 
-    # Match debtors with creditors
     while (
         creditor_index < len(creditors)
         and debtor_index < len(debtors)
@@ -155,7 +160,6 @@ def simplify_debts(balances: dict):
         creditor = creditors[creditor_index]
         debtor = debtors[debtor_index]
 
-        # Transfer the smaller outstanding amount
         amount = min(
             creditor["amount"],
             debtor["amount"]
@@ -167,15 +171,12 @@ def simplify_debts(balances: dict):
             "amount": amount
         })
 
-        # Reduce both outstanding balances
         creditor["amount"] -= amount
         debtor["amount"] -= amount
 
-        # Move to the next creditor if fully paid
         if creditor["amount"] == 0:
             creditor_index += 1
 
-        # Move to the next debtor if fully paid
         if debtor["amount"] == 0:
             debtor_index += 1
 
@@ -192,23 +193,25 @@ def record_settlement(
     recorded_by: UUID
 ):
 
-    amount = Decimal(str(amount))
-
-    if amount <= 0:
-        raise ValueError("Settlement amount must be positive.")
-
-    if amount != amount.quantize(CENT):
-        raise ValueError("Settlement can have at most 2 decimal places.")
+    # Validate amount, including finite value and decimal precision
+    amount = validate_amount(
+        amount,
+        "Settlement amount"
+    )
 
     if paid_by == paid_to:
-        raise ValueError("A user cannot pay themselves.")
+        raise ValueError(
+            "A user cannot pay themselves."
+        )
 
-    # Verify all three users belong to the group
+    # Verify all users belong to the group
     memberships = db.execute(
         select(GroupMember).where(
             GroupMember.group_id == group_id,
             GroupMember.user_id.in_([
-                paid_by, paid_to, recorded_by
+                paid_by,
+                paid_to,
+                recorded_by
             ])
         )
     ).scalars().all()
@@ -222,18 +225,22 @@ def record_settlement(
         user_id not in membership_map
         for user_id in (paid_by, paid_to, recorded_by)
     ):
-        raise PermissionError("All users must belong to this group.")
+        raise PermissionError(
+            "All users must belong to this group."
+        )
 
-    # Only the payer, receiver, or group admin can record payment
+    # Only payer, receiver or admin can record settlement
     recorder_membership = membership_map[recorded_by]
 
     if (
         recorded_by not in (paid_by, paid_to)
         and recorder_membership.role != "admin"
     ):
-        raise PermissionError("You cannot record this settlement.")
+        raise PermissionError(
+            "You cannot record this settlement."
+        )
 
-    # Get current balances before recording payment
+    # Calculate balances before recording payment
     balances = calculate_group_balances(
         db,
         group_id,
@@ -243,9 +250,10 @@ def record_settlement(
     payer_balance = balances[paid_by]
     receiver_balance = balances[paid_to]
 
-    # Verify that payer owes money and receiver should receive it
     if payer_balance >= 0 or receiver_balance <= 0:
-        raise ValueError("Invalid settlement participants.")
+        raise ValueError(
+            "Invalid settlement participants."
+        )
 
     # Prevent overpayment
     maximum_amount = min(
@@ -267,6 +275,7 @@ def record_settlement(
     )
 
     try:
+
         db.add(new_settlement)
         db.commit()
         db.refresh(new_settlement)
@@ -293,7 +302,9 @@ def get_group_settlements(
     ).scalar_one_or_none()
 
     if membership is None:
-        raise PermissionError("You are not a member of this group.")
+        raise PermissionError(
+            "You are not a member of this group."
+        )
 
     statement = (
         select(Settlement)
@@ -319,7 +330,9 @@ def get_user_settlements(
     ).scalar_one_or_none()
 
     if membership is None:
-        raise PermissionError("You are not a member of this group.")
+        raise PermissionError(
+            "You are not a member of this group."
+        )
 
     statement = (
         select(Settlement)

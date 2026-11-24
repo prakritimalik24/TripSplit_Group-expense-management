@@ -36,10 +36,10 @@ def create_expense(
     title: str,
     amount: Decimal,
     expense_date: datetime,
-    category: str | None = None
+    category: str | None = None,
+    commit: bool = True
 ):
 
-    # Validate input
     amount = validate_amount(amount, "Expense amount")
 
     title = validate_text(
@@ -60,7 +60,7 @@ def create_expense(
         field_name="Expense date"
     )
 
-    # Verify the acting user is a group member
+    # Verify acting user membership
     actor_membership = _get_membership(
         db,
         group_id,
@@ -72,7 +72,7 @@ def create_expense(
             "You are not a member of this group."
         )
 
-    # Verify the selected payer is a group member
+    # Verify payer membership
     payer_membership = _get_membership(
         db,
         group_id,
@@ -84,8 +84,7 @@ def create_expense(
             "Payer must be a group member."
         )
 
-    # Only the payer or a group admin can create
-    # an expense on behalf of that payer.
+    # Only payer or admin can create expense on behalf of payer
     if paid_by != user_id and actor_membership.role != "admin":
         raise PermissionError(
             "Only the payer or group admin can create this expense."
@@ -102,7 +101,16 @@ def create_expense(
 
     try:
         db.add(new_expense)
-        db.commit()
+
+        # Make the expense available to split creation
+        db.flush()
+
+        if commit:
+            db.commit()
+        else:
+            # Keep it inside the current transaction
+            db.flush()
+
         db.refresh(new_expense)
 
         return new_expense
@@ -188,6 +196,11 @@ def update_expense(
         user_id
     )
 
+    if membership is None:
+        raise PermissionError(
+            "You are not a member of this group."
+        )
+
     if expense.paid_by != user_id and membership.role != "admin":
         raise PermissionError(
             "Only the payer or group admin can update this expense."
@@ -266,6 +279,11 @@ def delete_expense(
         expense.group_id,
         user_id
     )
+
+    if membership is None:
+        raise PermissionError(
+            "You are not a member of this group."
+        )
 
     if expense.paid_by != user_id and membership.role != "admin":
         raise PermissionError(

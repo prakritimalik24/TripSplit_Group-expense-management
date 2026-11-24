@@ -1,16 +1,21 @@
 
 import streamlit as st
 import pandas as pd
+import logging
 
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.db.session import SessionLocal
 from backend.services.group_service import get_all_groups
 from backend.models.expense import Expense
 from backend.models.expense_split import ExpenseSplit
+
+
+logger = logging.getLogger(__name__)
 
 
 def render_dashboard():
@@ -123,7 +128,6 @@ def render_dashboard():
 
         st.divider()
 
-        
         # --------------------------------
         # 5. MONTHLY SPENDING TREND
         # --------------------------------
@@ -190,10 +194,6 @@ def render_dashboard():
                 "No expense data available for the last six months."
             )
 
-              
-           
-
-         
         # --------------------------------
         # 6. CATEGORY-WISE EXPENSES
         # --------------------------------
@@ -240,19 +240,17 @@ def render_dashboard():
                 "No category-wise expense data available."
             )
 
-  
-
         # --------------------------------
         # 7. YOUR GROUPS
         # --------------------------------
 
-        st.subheader(" Your Groups")
+        st.subheader("Your Groups")
 
         for group in groups:
 
             with st.container(border=True):
 
-                st.subheader(f" {group.name}")
+                st.subheader(group.name)
 
                 if group.description:
                     st.write(group.description)
@@ -260,10 +258,34 @@ def render_dashboard():
                 else:
                     st.caption("No description available.")
 
-    except Exception as error:
+    except (ValueError, PermissionError) as error:
 
-        st.error(f"Unable to load dashboard: {error}")
+        db.rollback()
+        st.error(str(error))
+
+    except SQLAlchemyError:
+
+        db.rollback()
+        logger.exception(
+            "Database error while loading dashboard."
+        )
+
+        st.error(
+            "Unable to load dashboard information. "
+            "Please try again later."
+        )
+
+    except Exception:
+
+        db.rollback()
+        logger.exception(
+            "Unexpected error while loading dashboard."
+        )
+
+        st.error(
+            "Something went wrong while loading your dashboard. "
+            "Please try again."
+        )
 
     finally:
-
         db.close()

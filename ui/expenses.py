@@ -1,11 +1,13 @@
 
 import streamlit as st
+import logging
 
 from uuid import UUID
 from decimal import Decimal
 from datetime import datetime, time, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.db.session import SessionLocal
 from backend.models import GroupMember, ExpenseSplit
@@ -21,6 +23,9 @@ from backend.services.split_service import (
     create_equal_splits,
     create_custom_splits
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def render_expenses():
@@ -156,9 +161,12 @@ def render_expenses():
                 elif not participant_ids:
                     st.warning("Select at least one participant.")
 
-                elif split_type == "Custom Split" and (
-                    sum(custom_amounts.values(), Decimal("0.00"))
-                    != Decimal(str(amount))
+                elif (
+                    split_type == "Custom Split"
+                    and sum(
+                        custom_amounts.values(),
+                        Decimal("0.00")
+                    ) != Decimal(str(amount))
                 ):
                     st.error(
                         "The sum of individual shares must equal "
@@ -178,13 +186,15 @@ def render_expenses():
                         expense = create_expense(
                             db=db,
                             group_id=group_id,
-                            user_id=user_id,       # Authenticated user
-                            paid_by=user_id,       # Person who paid
+                            user_id=user_id,
+                            paid_by=user_id,
                             title=title.strip(),
                             amount=Decimal(str(amount)),
                             expense_date=expense_datetime,
-                            category=category
+                            category=category,
+                            commit = False
                         )
+
                         # Create splits
                         if split_type == "Equal Split":
 
@@ -192,7 +202,9 @@ def render_expenses():
                                 db=db,
                                 expense_id=expense.id,
                                 user_id=user_id,
-                                participant_ids=participant_ids
+                                participant_ids=participant_ids,
+                                commit = False
+
                             )
 
                         else:
@@ -206,8 +218,11 @@ def render_expenses():
                                 db=db,
                                 expense_id=expense.id,
                                 user_id=user_id,
-                                splits=splits
+                                splits=splits,
+                                commit = False
                             )
+
+                            db.commit()
 
                         st.success(
                             f"Expense '{expense.title}' added successfully!"
@@ -215,9 +230,29 @@ def render_expenses():
 
                         st.rerun()
 
-                    except Exception as error:
+                    except (ValueError, PermissionError) as error:
                         db.rollback()
-                        st.error(f"Unable to add expense: {error}")
+                        st.error(str(error))
+
+                    except SQLAlchemyError:
+                        db.rollback()
+                        logger.exception(
+                            "Database error while creating expense or splits."
+                        )
+                        st.error(
+                            "Unable to save the expense. "
+                            "Please check your details and try again."
+                        )
+
+                    except Exception:
+                        db.rollback()
+                        logger.exception(
+                            "Unexpected error while creating expense."
+                        )
+                        st.error(
+                            "Something went wrong while adding the expense. "
+                            "Please try again."
+                        )
 
         # ==================================
         # 2. EXPENSE HISTORY
@@ -292,8 +327,24 @@ def render_expenses():
                         else:
                             st.caption("No splits recorded.")
 
-    except Exception as error:
-        st.error(f"Unable to load expenses: {error}")
+    except (ValueError, PermissionError) as error:
+        db.rollback()
+        st.error(str(error))
+
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Database error while loading expenses.")
+        st.error(
+            "Unable to load expenses right now. Please try again later."
+        )
+
+    except Exception:
+        db.rollback()
+        logger.exception("Unexpected error in expense management.")
+        st.error(
+            "Something went wrong while loading expenses. "
+            "Please try again."
+        )
 
     finally:
         db.close()

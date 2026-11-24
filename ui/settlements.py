@@ -1,10 +1,12 @@
 
 import streamlit as st
+import logging
 
 from uuid import UUID
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.db.session import SessionLocal
 from backend.models import GroupMember
@@ -17,6 +19,9 @@ from backend.services.settlement_service import (
     record_settlement,
     get_group_settlements
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def render_settlements():
@@ -242,11 +247,28 @@ def render_settlements():
                     db.rollback()
                     st.error(str(error))
 
-                except Exception as error:
+                except SQLAlchemyError:
 
                     db.rollback()
+                    logger.exception(
+                        "Database error while recording settlement."
+                    )
+
                     st.error(
-                        f"Unable to record settlement: {error}"
+                        "Unable to record settlement due to a database "
+                        "error. Please try again."
+                    )
+
+                except Exception:
+
+                    db.rollback()
+                    logger.exception(
+                        "Unexpected error while recording settlement."
+                    )
+
+                    st.error(
+                        "Something went wrong while recording settlement. "
+                        "Please try again."
                     )
 
         else:
@@ -295,10 +317,33 @@ def render_settlements():
 
             st.info("No settlements recorded yet.")
 
-    except Exception as error:
+    except (ValueError, PermissionError) as error:
+
+        db.rollback()
+        st.error(str(error))
+
+    except SQLAlchemyError:
+
+        db.rollback()
+        logger.exception(
+            "Database error while loading settlement information."
+        )
 
         st.error(
-            f"Unable to load settlement information: {error}"
+            "Unable to load settlement information. "
+            "Please try again later."
+        )
+
+    except Exception:
+
+        db.rollback()
+        logger.exception(
+            "Unexpected error in settlement management."
+        )
+
+        st.error(
+            "Something went wrong while loading settlements. "
+            "Please try again."
         )
 
     finally:

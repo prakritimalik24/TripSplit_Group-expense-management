@@ -1,8 +1,10 @@
 
 import streamlit as st
+import logging
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.db.session import SessionLocal
 from backend.models import GroupMember
@@ -17,6 +19,9 @@ from backend.services.invitation_service import (
     create_invitation,
     accept_invitation
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def render_groups():
@@ -74,8 +79,25 @@ def render_groups():
                     )
                     st.info("You have been added as the group admin.")
 
-                except Exception as error:
-                    st.error(f"Unable to create group: {error}")
+                except (ValueError, PermissionError) as error:
+                    db.rollback()
+                    st.error(str(error))
+
+                except SQLAlchemyError:
+                    db.rollback()
+                    logger.exception("Database error while creating group.")
+                    st.error(
+                        "Unable to create group due to a database error. "
+                        "Please try again."
+                    )
+
+                except Exception:
+                    db.rollback()
+                    logger.exception("Unexpected error while creating group.")
+                    st.error(
+                        "Something went wrong while creating the group. "
+                        "Please try again."
+                    )
 
                 finally:
                     db.close()
@@ -165,7 +187,10 @@ def render_groups():
                             None
                         )
 
-                        if current_membership and current_membership.role == "admin":
+                        if (
+                            current_membership
+                            and current_membership.role == "admin"
+                        ):
 
                             st.divider()
                             st.subheader("Invite Friends")
@@ -175,15 +200,44 @@ def render_groups():
                                 key=f"invite_{group.id}"
                             ):
 
-                                invitation = create_invitation(
-                                    db=db,
-                                    group_id=group.id,
-                                    invited_by=user_id
-                                )
+                                try:
+                                    invitation = create_invitation(
+                                        db=db,
+                                        group_id=group.id,
+                                        invited_by=user_id
+                                    )
 
-                                st.session_state[
-                                    f"invite_token_{group.id}"
-                                ] = invitation["token"]
+                                    st.session_state[
+                                        f"invite_token_{group.id}"
+                                    ] = invitation["token"]
+
+                                    st.success(
+                                        "Invitation generated successfully!"
+                                    )
+
+                                except (ValueError, PermissionError) as error:
+                                    db.rollback()
+                                    st.error(str(error))
+
+                                except SQLAlchemyError:
+                                    db.rollback()
+                                    logger.exception(
+                                        "Database error while generating invitation."
+                                    )
+                                    st.error(
+                                        "Unable to generate invitation. "
+                                        "Please try again."
+                                    )
+
+                                except Exception:
+                                    db.rollback()
+                                    logger.exception(
+                                        "Unexpected error while generating invitation."
+                                    )
+                                    st.error(
+                                        "Something went wrong. "
+                                        "Please try again."
+                                    )
 
                             token = st.session_state.get(
                                 f"invite_token_{group.id}"
@@ -191,8 +245,9 @@ def render_groups():
 
                             if token:
 
-                                st.success("Invitation generated!")
-                                st.write("Share this token with your friend:")
+                                st.write(
+                                    "Share this token with your friend:"
+                                )
                                 st.code(token)
 
                                 st.caption(
@@ -200,8 +255,24 @@ def render_groups():
                                     "The token can be used only once."
                                 )
 
-        except Exception as error:
-            st.error(f"Unable to load groups: {error}")
+        except (ValueError, PermissionError) as error:
+            db.rollback()
+            st.error(str(error))
+
+        except SQLAlchemyError:
+            db.rollback()
+            logger.exception("Database error while loading groups.")
+            st.error(
+                "Unable to load your groups. Please try again later."
+            )
+
+        except Exception:
+            db.rollback()
+            logger.exception("Unexpected error while loading groups.")
+            st.error(
+                "Something went wrong while loading groups. "
+                "Please try again."
+            )
 
         finally:
             db.close()
@@ -250,13 +321,29 @@ def render_groups():
                         "You have successfully joined the group!"
                     )
 
-                    st.write(f"Group ID: {membership.group_id}")
-
                 except (ValueError, PermissionError) as error:
+                    db.rollback()
                     st.error(str(error))
 
-                except Exception as error:
-                    st.error(f"Unable to join group: {error}")
+                except SQLAlchemyError:
+                    db.rollback()
+                    logger.exception(
+                        "Database error while joining group."
+                    )
+                    st.error(
+                        "Unable to join the group due to a database error. "
+                        "Please try again."
+                    )
+
+                except Exception:
+                    db.rollback()
+                    logger.exception(
+                        "Unexpected error while joining group."
+                    )
+                    st.error(
+                        "Something went wrong while joining the group. "
+                        "Please try again."
+                    )
 
                 finally:
                     db.close()

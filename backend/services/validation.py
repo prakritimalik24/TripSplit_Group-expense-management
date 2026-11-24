@@ -10,6 +10,20 @@ MAX_AMOUNT = Decimal("9999999999.99")
 
 
 
+def validate_email(email):
+
+    if not isinstance(email, str):
+        raise ValueError("Please enter a valid email address.")
+
+    email = email.strip().lower()
+
+    pattern = r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$"
+
+    if len(email) > 254 or not re.fullmatch(pattern, email):
+        raise ValueError("Please enter a valid email address.")
+
+    return email
+
 
 def validate_expiry_days(value):
 

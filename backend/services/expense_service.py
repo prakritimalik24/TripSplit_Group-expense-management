@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from backend.models import Expense, ExpenseSplit, GroupMember
+
 from backend.services.validation import (
     validate_amount,
     validate_text,
@@ -14,7 +15,11 @@ from backend.services.validation import (
 )
 
 
-def _get_membership(db: Session, group_id: UUID, user_id: UUID):
+def _get_membership(
+    db: Session,
+    group_id: UUID,
+    user_id: UUID
+):
     statement = select(GroupMember).where(
         GroupMember.group_id == group_id,
         GroupMember.user_id == user_id
@@ -26,6 +31,7 @@ def _get_membership(db: Session, group_id: UUID, user_id: UUID):
 def create_expense(
     db: Session,
     group_id: UUID,
+    user_id: UUID,
     paid_by: UUID,
     title: str,
     amount: Decimal,
@@ -54,11 +60,36 @@ def create_expense(
         field_name="Expense date"
     )
 
-    # Validate payer membership
-    membership = _get_membership(db, group_id, paid_by)
+    # Verify the acting user is a group member
+    actor_membership = _get_membership(
+        db,
+        group_id,
+        user_id
+    )
 
-    if membership is None:
-        raise PermissionError("Payer must be a group member.")
+    if actor_membership is None:
+        raise PermissionError(
+            "You are not a member of this group."
+        )
+
+    # Verify the selected payer is a group member
+    payer_membership = _get_membership(
+        db,
+        group_id,
+        paid_by
+    )
+
+    if payer_membership is None:
+        raise ValueError(
+            "Payer must be a group member."
+        )
+
+    # Only the payer or a group admin can create
+    # an expense on behalf of that payer.
+    if paid_by != user_id and actor_membership.role != "admin":
+        raise PermissionError(
+            "Only the payer or group admin can create this expense."
+        )
 
     new_expense = Expense(
         group_id=group_id,
@@ -110,10 +141,16 @@ def get_group_expenses(
     user_id: UUID
 ):
 
-    membership = _get_membership(db, group_id, user_id)
+    membership = _get_membership(
+        db,
+        group_id,
+        user_id
+    )
 
     if membership is None:
-        raise PermissionError("You are not a member of this group.")
+        raise PermissionError(
+            "You are not a member of this group."
+        )
 
     statement = (
         select(Expense)
@@ -136,12 +173,20 @@ def update_expense(
     expense_date: datetime | None = None
 ):
 
-    expense = get_expense_by_id(db, expense_id, user_id)
+    expense = get_expense_by_id(
+        db,
+        expense_id,
+        user_id
+    )
 
     if expense is None:
         return None
 
-    membership = _get_membership(db, expense.group_id, user_id)
+    membership = _get_membership(
+        db,
+        expense.group_id,
+        user_id
+    )
 
     if expense.paid_by != user_id and membership.role != "admin":
         raise PermissionError(
@@ -178,7 +223,6 @@ def update_expense(
             expense.amount = validated_amount
 
         if category is not None:
-
             expense.category = validate_text(
                 category,
                 field_name="Category",
@@ -187,7 +231,6 @@ def update_expense(
             )
 
         if expense_date is not None:
-
             expense.expense_date = validate_datetime(
                 expense_date,
                 field_name="Expense date"
@@ -209,12 +252,20 @@ def delete_expense(
     user_id: UUID
 ):
 
-    expense = get_expense_by_id(db, expense_id, user_id)
+    expense = get_expense_by_id(
+        db,
+        expense_id,
+        user_id
+    )
 
     if expense is None:
         return False
 
-    membership = _get_membership(db, expense.group_id, user_id)
+    membership = _get_membership(
+        db,
+        expense.group_id,
+        user_id
+    )
 
     if expense.paid_by != user_id and membership.role != "admin":
         raise PermissionError(

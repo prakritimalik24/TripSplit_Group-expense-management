@@ -178,13 +178,13 @@ def render_expenses():
                         expense = create_expense(
                             db=db,
                             group_id=group_id,
-                            paid_by=user_id,
+                            user_id=user_id,       # Authenticated user
+                            paid_by=user_id,       # Person who paid
                             title=title.strip(),
                             amount=Decimal(str(amount)),
                             expense_date=expense_datetime,
                             category=category
                         )
-
                         # Create splits
                         if split_type == "Equal Split":
 

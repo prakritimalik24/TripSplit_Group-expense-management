@@ -1,3 +1,14 @@
+import sys
+from pathlib import Path
+
+# Get the project root directory
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+# Add project root to Python path
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+
 
 import logging
 import os

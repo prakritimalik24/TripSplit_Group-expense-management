@@ -195,7 +195,8 @@ def render_expenses():
                             commit = False
                         )
 
-                        # Create splits
+                       
+        # Create splits
                         if split_type == "Equal Split":
 
                             create_equal_splits(
@@ -203,8 +204,7 @@ def render_expenses():
                                 expense_id=expense.id,
                                 user_id=user_id,
                                 participant_ids=participant_ids,
-                                commit = False
-
+                                commit=False
                             )
 
                         else:
@@ -219,16 +219,18 @@ def render_expenses():
                                 expense_id=expense.id,
                                 user_id=user_id,
                                 splits=splits,
-                                commit = False
+                                commit=False
                             )
 
-                            db.commit()
+                        # Commit BOTH expense and splits together
+                        db.commit()
 
                         st.success(
                             f"Expense '{expense.title}' added successfully!"
                         )
 
                         st.rerun()
+
 
                     except (ValueError, PermissionError) as error:
                         db.rollback()

@@ -79,6 +79,7 @@ def render_groups():
                     )
                     st.info("You have been added as the group admin.")
 
+                    st.rerun()
                 except (ValueError, PermissionError) as error:
                     db.rollback()
                     st.error(str(error))
@@ -320,6 +321,8 @@ def render_groups():
                     st.success(
                         "You have successfully joined the group!"
                     )
+
+                    st.rerun()
 
                 except (ValueError, PermissionError) as error:
                     db.rollback()

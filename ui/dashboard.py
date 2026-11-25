@@ -27,8 +27,12 @@ def render_dashboard():
     # WELCOME SECTION
     # --------------------------------
 
-    st.title(f"Hello, {user['name']}! ")
-    st.caption("Welcome to your TripSplit dashboard.")
+    st.title(f"Good to see you, {user['name']}!")
+
+    st.caption(
+        "Your crew, your plans, your expenses — "
+        "everything in one place."
+    )
 
     st.divider()
 
@@ -48,27 +52,41 @@ def render_dashboard():
         group_ids = [group.id for group in groups]
 
         # --------------------------------
-        # 2. OVERVIEW
+        # 2. YOUR SNAPSHOT
         # --------------------------------
 
-        st.subheader("Your Overview")
+        st.subheader("Your Snapshot")
+
+        st.caption(
+            "A quick look at your shared spending."
+        )
 
         if not group_ids:
 
             col1, col2, col3 = st.columns(3)
 
             with col1:
-                st.metric("Total Groups", 0)
+                st.metric(
+                    "Groups You're In",
+                    0
+                )
 
             with col2:
-                st.metric("Total Group Expenses", "₹0.00")
+                st.metric(
+                    "Total Shared Spending",
+                    "₹0.00"
+                )
 
             with col3:
-                st.metric("Your Total Share", "₹0.00")
+                st.metric(
+                    "Your Share of Expenses",
+                    "₹0.00"
+                )
 
             st.info(
-                "You haven't joined any groups yet. "
-                "Create or join a group to get started!"
+                "Your next adventure starts here! "
+                "Create a group or join your friends "
+                "to start tracking shared expenses."
             )
 
             return
@@ -110,19 +128,19 @@ def render_dashboard():
 
         with col1:
             st.metric(
-                "Total Groups",
+                "Groups You're In",
                 len(groups)
             )
 
         with col2:
             st.metric(
-                "Total Group Expenses",
+                "Total Shared Spending",
                 f"₹{float(total_expenses):,.2f}"
             )
 
         with col3:
             st.metric(
-                "Your Total Share",
+                "Your Share of Expenses",
                 f"₹{float(user_share):,.2f}"
             )
 
@@ -132,7 +150,12 @@ def render_dashboard():
         # 5. MONTHLY SPENDING TREND
         # --------------------------------
 
-        st.subheader("📊 Monthly Spending Trend")
+        st.subheader("Your Spending Journey")
+
+        st.caption(
+            "See how your group's expenses have changed "
+            "over the last six months."
+        )
 
         six_months_ago = (
             datetime.now(timezone.utc)
@@ -191,14 +214,20 @@ def render_dashboard():
         else:
 
             st.info(
-                "No expense data available for the last six months."
+                "Your spending timeline will appear here "
+                "once your groups start adding expenses."
             )
 
         # --------------------------------
         # 6. CATEGORY-WISE EXPENSES
         # --------------------------------
 
-        st.subheader("📊 Category-wise Spending")
+        st.subheader("Where Your Money Goes")
+
+        st.caption(
+            "Understand which categories account "
+            "for most of your shared spending."
+        )
 
         category_data = (
             db.query(
@@ -237,14 +266,21 @@ def render_dashboard():
         else:
 
             st.info(
-                "No category-wise expense data available."
+                "Category insights will appear here "
+                "as you add expenses."
             )
 
         # --------------------------------
         # 7. YOUR GROUPS
         # --------------------------------
 
-        st.subheader("Your Groups")
+        st.divider()
+
+        st.subheader("Your Travel Circles")
+
+        st.caption(
+            "All the groups you're sharing expenses with."
+        )
 
         for group in groups:
 
@@ -256,7 +292,9 @@ def render_dashboard():
                     st.write(group.description)
 
                 else:
-                    st.caption("No description available.")
+                    st.caption(
+                        "No group description added yet."
+                    )
 
     except (ValueError, PermissionError) as error:
 
@@ -266,6 +304,7 @@ def render_dashboard():
     except SQLAlchemyError:
 
         db.rollback()
+
         logger.exception(
             "Database error while loading dashboard."
         )
@@ -278,6 +317,7 @@ def render_dashboard():
     except Exception:
 
         db.rollback()
+
         logger.exception(
             "Unexpected error while loading dashboard."
         )

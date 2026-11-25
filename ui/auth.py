@@ -1,5 +1,9 @@
 
 import logging
+import os
+import time
+from datetime import datetime, timedelta
+
 import streamlit as st
 
 from backend.db.session import SessionLocal
@@ -9,11 +13,19 @@ from backend.services.auth_service import (
     login_user
 )
 
+from backend.security import ACCESS_TOKEN_EXPIRE_MINUTES
+
 
 logger = logging.getLogger(__name__)
 
+COOKIE_NAME = "tripsplit_access_token"
 
-def render_auth_page():
+COOKIE_SECURE = (
+    os.getenv("COOKIE_SECURE", "false").lower() == "true"
+)
+
+
+def render_auth_page(cookie_manager):
 
     st.title("Welcome to TripSplit")
     st.write("Manage shared expenses with your friends.")
@@ -62,17 +74,38 @@ def render_auth_page():
                         password=password
                     )
 
+                    token = result["access_token"]
+
+                    # Save authentication token in browser cookie.
+                    cookie_manager.set(
+                        cookie=COOKIE_NAME,
+                        val=token,
+                        key="save_tripsplit_login",
+                        path="/",
+                        expires_at=(
+                            datetime.now()
+                            + timedelta(
+                                minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+                            )
+                        ),
+                        secure=COOKIE_SECURE,
+                        same_site="strict"
+                    )
+
+                    # Store user information in Streamlit session.
                     st.session_state.user = {
                         "id": str(result["user"].id),
                         "name": result["user"].name,
                         "email": result["user"].email
                     }
 
-                    st.session_state.access_token = (
-                        result["access_token"]
-                    )
+                    st.session_state.access_token = token
 
                     st.success("Login successful!")
+
+                    # Allow browser cookie update to complete.
+                    with st.spinner("Saving your login..."):
+                        time.sleep(1.5)
 
                     st.rerun()
 
